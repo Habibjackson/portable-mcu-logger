@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "timestamp_unit": "ms since boot",
+  "events": {
+    "1": {
+      "name": "robot_telemetry",
+      "fields": [
+        {"name": "motor_speed", "type": "i32", "unit": "rpm"},
+        {"name": "motor_current", "type": "i32", "scale": "0.001", "unit": "A"},
+        {"name": "pressure", "type": "i32", "scale": "0.1", "unit": "kPa"},
+        {"name": "encoder_position", "type": "i32", "unit": "ticks"},
+        {"name": "fault_active", "type": "i32", "enum": {"0": "no", "1": "yes"}},
+        {"name": "warning_bits", "type": "i32", "bits": {"0": "overcurrent", "1": "high_pressure", "2": "sensor_disconnected"}}
+      ]
+    },
+    "4097": {
+      "name": "motor_overcurrent",
+      "optional_payload": true,
+      "fields": [
+        {"name": "motor_current", "type": "u16", "scale": "0.001", "unit": "A"},
+        {"name": "pressure", "type": "u16", "scale": "0.1", "unit": "kPa"}
+      ]
+    },
+    "8193": {
+      "name": "motor_stopped",
+      "encoding": "utf8"
+    },
+    "4098": {
+      "name": "pressure_limit",
+      "optional_payload": true,
+      "fields": [
+        {"name": "motor_current", "type": "u16", "scale": "0.001", "unit": "A"},
+        {"name": "pressure", "type": "u16", "scale": "0.1", "unit": "kPa"}
+      ]
+    },
+    "4099": {
+      "name": "sensor_disconnected",
+      "optional_payload": true,
+      "fields": [
+        {"name": "motor_current", "type": "u16", "scale": "0.001", "unit": "A"},
+        {"name": "pressure", "type": "u16", "scale": "0.1", "unit": "kPa"}
+      ]
+    },
+    "12289": {
+      "name": "simulated_software_reset",
+      "fields": [
+        {"name": "reason", "type": "u8", "enum": {"1": "operator_requested"}}
+      ]
+    }
+  }
+}
