@@ -1,3 +1,9 @@
+/** @file
+ * @brief Linker-bounded STM32F103 internal-flash storage adapter.
+ *
+ * The selected MCU density determines nominal capacity and erase-page size.
+ * Only the separately reserved linker range is available to the logger.
+ */
 #ifndef ELOG_STORAGE_STM32F103_H
 #define ELOG_STORAGE_STM32F103_H
 

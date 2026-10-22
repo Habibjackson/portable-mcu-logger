@@ -8,6 +8,11 @@ from pathlib import Path
 
 
 def main() -> int:
+    """Send one paced command and capture its complete console response.
+
+    The pacing avoids overrunning the firmware's byte-at-a-time UART polling.
+    A dump must include its end marker before it is saved or printed.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("port", help="USB-to-UART port, e.g. COM4 or /dev/ttyUSB0")
     parser.add_argument("command", nargs="+", help="console command words")

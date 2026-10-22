@@ -3,7 +3,9 @@
  *
  * The linker reserves 0x0800E000..0x08010000 exclusively for this logger.
  * This test application has no motor outputs; PC13 indicates a latched safe
- * state. Flash processing still blocks the CPU and must be measured on board.
+ * state. Automatic telemetry is stored only while a fault is present (and at
+ * its recovery boundary); healthy samples queue no new flash writes.
+ * Flash processing still blocks the CPU and must be measured on board.
  */
 #include "stm32f1xx_hal.h"
 
@@ -29,6 +31,7 @@ static uint8_t logger_ready;
 static uint8_t running;
 static uint8_t safe_state;
 static uint8_t active_faults;
+static uint8_t previous_auto_sample_had_fault;
 static uint8_t waveform; /* 0 triangle, 1 saw, 2 step */
 static uint32_t sample_index;
 static uint32_t last_sample_tick;
@@ -42,12 +45,17 @@ static volatile uint32_t previous_systick_cycle;
 static uint64_t uptime_high;
 static uint32_t previous_tick;
 
+/** @brief Send a null-terminated console fragment over USART1.
+ * @note This blocking test-console call has a one-second HAL timeout and
+ *       must not be copied into a time-critical interrupt path.
+ */
 static void tx(const char *message)
 {
     (void)HAL_UART_Transmit(&uart, (uint8_t *)(uintptr_t)message,
                             (uint16_t)strlen(message), 1000u);
 }
 
+/** @brief Print an unsigned counter without a full printf dependency. */
 static void tx_u64(uint64_t value)
 {
     char digits[21];
@@ -62,6 +70,7 @@ static void tx_u64(uint64_t value)
     }
 }
 
+/** @brief Print a signed logger result, including negative error codes. */
 static void tx_i32(int32_t value)
 {
     if (value < 0) {
@@ -72,12 +81,18 @@ static void tx_i32(int32_t value)
     }
 }
 
+/** @brief Latch the safe-state flag and illuminate the PC13 test LED.
+ * This board demo has no actuator; real hardware must disable outputs here.
+ */
 static void enter_safe_state(void)
 {
     safe_state = 1u;
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); /* LED on. */
 }
 
+/** @brief Count a logger failure or routine replacement and latch safe state.
+ * Positive flow codes other than ELOG_QUEUED_WITH_DROP are not failures.
+ */
 static void note(elog_result_t result)
 {
     if (result < ELOG_OK || result == ELOG_QUEUED_WITH_DROP) {
@@ -86,6 +101,10 @@ static void note(elog_result_t result)
     }
 }
 
+/** @brief Extend HAL's wrapping 32-bit millisecond tick to 64 bits.
+ * @param context Unused; the logger calls this from its serialized task.
+ * @return Monotonic uptime if called at least once per 32-bit wrap interval.
+ */
 static uint64_t uptime_ms(void *context)
 {
     (void)context;
@@ -97,6 +116,7 @@ static uint64_t uptime_ms(void *context)
     return uptime_high | tick;
 }
 
+/** @brief Encode a 32-bit telemetry field in little-endian byte order. */
 static void put32(uint8_t *bytes, uint32_t value)
 {
     for (unsigned int i = 0u; i < 4u; ++i) {
@@ -104,12 +124,21 @@ static void put32(uint8_t *bytes, uint32_t value)
     }
 }
 
+/** @brief Encode a 16-bit fault snapshot field without struct padding. */
 static void put16(uint8_t *bytes, uint16_t value)
 {
     bytes[0] = (uint8_t)value;
     bytes[1] = (uint8_t)(value >> 8);
 }
 
+/** @brief Queue one fault onset or recovery on a state transition.
+ * @param bit Application bit identifying one of the three synthetic faults.
+ * @param id Persisted schema ID for that fault and its recovery.
+ * @param should_be_active Nonzero while the sampled condition is present.
+ * @note Safety is latched before attempting a fault write. active_faults
+ *       tracks accepted logger transitions, so a rejected transition can be
+ *       retried at the next sample without claiming it was committed.
+ */
 static void set_fault(uint8_t bit, uint32_t id, uint8_t should_be_active)
 {
     if (should_be_active != 0u && (active_faults & bit) == 0u) {
@@ -134,6 +163,14 @@ static void set_fault(uint8_t bit, uint32_t id, uint8_t should_be_active)
     }
 }
 
+/** @brief Generate one synthetic sensor set and apply fault-window logging.
+ * @param inject_faults Nonzero for automatic run sampling and fault detection;
+ *                      zero for manual routine/burst test overrides.
+ * @note Healthy automatic samples are evaluated without enqueueing telemetry.
+ *       The first fault sample and one recovery-boundary sample are queued
+ *       when capacity permits.
+ *       Successful enqueue still needs later elog_process() calls to commit.
+ */
 static void emit_sample(uint8_t inject_faults)
 {
     const uint32_t speed_phase = sample_index % 40u;
@@ -158,28 +195,43 @@ static void emit_sample(uint8_t inject_faults)
     const uint8_t pressure_high = last_pressure_deci_kpa >= 230u;
     const uint8_t sensor_missing =
         pressure_phase >= 42u && pressure_phase < 47u;
+    const uint8_t fault_was_active = previous_auto_sample_had_fault;
+    const uint8_t fault_detected = current_high != 0u ||
+        pressure_high != 0u || sensor_missing != 0u;
     const uint32_t warnings = (uint32_t)current_high |
         ((uint32_t)pressure_high << 1) | ((uint32_t)sensor_missing << 2);
-    uint8_t telemetry[24];
-    put32(telemetry, rpm);
-    put32(telemetry + 4u, last_current_ma);
-    put32(telemetry + 8u, last_pressure_deci_kpa);
-    put32(telemetry + 12u, (uint32_t)position_ticks);
-    put32(telemetry + 16u, warnings != 0u);
-    put32(telemetry + 20u, warnings);
-    note(elog_write(&logger, ELOG_ROUTINE, ELOG_TYPE_TELEMETRY,
-                    ROBOT_EXAMPLE_TELEMETRY_ID, telemetry,
-                    sizeof telemetry));
     if (inject_faults != 0u) {
         set_fault(FAULT_CURRENT, ROBOT_EXAMPLE_MOTOR_FAULT_ID, current_high);
         set_fault(FAULT_PRESSURE, ROBOT_EXAMPLE_PRESSURE_FAULT_ID,
                   pressure_high);
         set_fault(FAULT_SENSOR, ROBOT_EXAMPLE_SENSOR_FAULT_ID,
                   sensor_missing);
+        /* Track measured faults separately from fault-record acceptance so a
+         * failed recovery cannot extend telemetry writes into healthy time. */
+        previous_auto_sample_had_fault = fault_detected;
+    }
+    /* Manual routine/burst commands deliberately override this policy for
+     * testing. Normal sampling keeps healthy readings out of flash. Retain
+     * the first fault sample and one recovery-boundary sample. */
+    if (inject_faults == 0u || fault_detected != 0u ||
+        fault_was_active != 0u) {
+        uint8_t telemetry[24];
+        put32(telemetry, rpm);
+        put32(telemetry + 4u, last_current_ma);
+        put32(telemetry + 8u, last_pressure_deci_kpa);
+        put32(telemetry + 12u, (uint32_t)position_ticks);
+        put32(telemetry + 16u,
+              warnings != 0u ||
+              (inject_faults == 0u && active_faults != 0u));
+        put32(telemetry + 20u, warnings);
+        note(elog_write(&logger, ELOG_ROUTINE, ELOG_TYPE_TELEMETRY,
+                        ROBOT_EXAMPLE_TELEMETRY_ID, telemetry,
+                        sizeof telemetry));
     }
     ++sample_index;
 }
 
+/** @brief Counts and payload lengths derived from committed readback only. */
 typedef struct {
     uint32_t count;
     uint32_t faults;
@@ -191,6 +243,11 @@ typedef struct {
     uint32_t stored_bytes;
 } record_summary_t;
 
+/** @brief Accumulate one validated stored record for status output.
+ * @param context Caller-owned record_summary_t accumulator.
+ * @param record Borrowed readback record; no payload pointer is retained.
+ * @return Zero to continue through every page.
+ */
 static int count_record(void *context, const elog_record_t *record)
 {
     record_summary_t *summary = (record_summary_t *)context;
@@ -205,6 +262,10 @@ static int count_record(void *context, const elog_record_t *record)
     return 0;
 }
 
+/** @brief Drain pending work and report retained records plus session counters.
+ * A flush result may mean records remain pending. Record counts come from
+ * committed flash, while sample and error counters describe this boot only.
+ */
 static void show_status(void)
 {
     if (logger_ready == 0u) {
@@ -225,6 +286,7 @@ static void show_status(void)
     (void)elog_get_status(&logger, &status);
     tx("scan="); tx_i32(scan_result);
     tx(" flush="); tx_i32(flush_result);
+    tx(" samples="); tx_u64(sample_index);
     tx(" records="); tx_u64(summary.count);
     tx(" routine="); tx_u64(summary.routine);
     tx(" faults="); tx_u64(summary.faults);
@@ -259,11 +321,16 @@ static void show_status(void)
     tx("\r\n");
 }
 
+/** @brief Convert one four-bit value to an uppercase hexadecimal character. */
 static char hex_digit(uint8_t nibble)
 {
     return (char)(nibble < 10u ? '0' + nibble : 'A' + nibble - 10u);
 }
 
+/** @brief Print the complete linker-reserved 8 KiB flash image as framed hex.
+ * Read errors abort the frame and latch safe state, so a host converter can
+ * reject an incomplete dump instead of treating it as valid history.
+ */
 static void dump_image(void)
 {
     if (logger_ready == 0u) {
@@ -291,6 +358,10 @@ static void dump_image(void)
     tx("ELOG_HEX_END\r\n");
 }
 
+/** @brief Dispatch one complete operator command from the USART1 console.
+ * Manual routine, burst, reset, and fault commands deliberately create
+ * records outside the automatic fault-window sampling policy.
+ */
 static void command(const char *line)
 {
     if (strcmp(line, "help") == 0) {
@@ -301,7 +372,8 @@ static void command(const char *line)
     } else if (strcmp(line, "dump") == 0) {
         dump_image();
     } else if (strcmp(line, "run") == 0) {
-        running = 1u; last_sample_tick = HAL_GetTick(); tx("running\r\n");
+        running = 1u; last_sample_tick = HAL_GetTick();
+        tx("running; automatic telemetry saved only during faults\r\n");
     } else if (strcmp(line, "stop") == 0) {
         running = 0u; tx("stopped\r\n");
     } else if (strcmp(line, "wave triangle") == 0 ||
@@ -373,6 +445,10 @@ static void command(const char *line)
     }
 }
 
+/** @brief Consume at most one received UART byte per main-loop iteration.
+ * Input is bounded to the command buffer. Bulk pasted text may outrun this
+ * polling interface; tools/bluepill_uart.py paces transmitted characters.
+ */
 static void poll_console(void)
 {
     static char input[40];
@@ -400,6 +476,7 @@ static void poll_console(void)
     }
 }
 
+/** @brief Advance the HAL millisecond clock and measure interrupt-entry gaps. */
 void SysTick_Handler(void)
 {
     const uint32_t now = DWT->CYCCNT;
@@ -413,6 +490,7 @@ void SysTick_Handler(void)
     HAL_IncTick();
 }
 
+/** @brief Select HSI/2 times 16 PLL for a 64 MHz Blue Pill test clock. */
 static void init_clock(void)
 {
     RCC_OscInitTypeDef oscillator = {0};
@@ -437,6 +515,7 @@ static void init_clock(void)
     }
 }
 
+/** @brief Configure USART1 pins and PC13 safe-state indicator at 115200 8N1. */
 static void init_console(void)
 {
     __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -469,6 +548,7 @@ static void init_console(void)
     }
 }
 
+/** @brief Describe the reset flags captured before HAL clears them. */
 static void print_reset_cause(uint32_t flags)
 {
     tx("reset_cause=");
@@ -481,6 +561,10 @@ static void print_reset_cause(uint32_t flags)
     tx("\r\n");
 }
 
+/** @brief Bind the reserved internal-flash adapter and three journal lanes.
+ * @return ELOG_OK after read-only recovery scan, or a layout/storage error.
+ * @note Initialization does not erase the saved log region.
+ */
 static elog_result_t init_logger(void)
 {
     elog_result_t result = elog_stm32f103_flash_init(&flash_adapter,
@@ -501,8 +585,8 @@ static elog_result_t init_logger(void)
     config.event_queue_depth = 4u;
     config.routine_queue_depth = 8u;
     config.isr_queue_depth = 4u;
-    config.pre_fault_depth = 4u;
-    config.post_fault_depth = 2u;
+    config.pre_fault_depth = 0u;
+    config.post_fault_depth = 0u;
     config.max_payload = 80u;
     config.fault_table_depth = 4u;
     config.storage_timeout_ms = FLASH_TIMEOUT_VALUE;
@@ -514,6 +598,10 @@ static elog_result_t init_logger(void)
     return elog_init(&logger, &config, &storage);
 }
 
+/** @brief Boot the synthetic test console and process queued work in the loop.
+ * @return Never returns. A failed logger init leaves the LED latched and the
+ *         console available for diagnostics, but no logger writes are made.
+ */
 int main(void)
 {
     HAL_Init();

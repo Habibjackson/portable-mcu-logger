@@ -1,3 +1,9 @@
+/** @file
+ * @brief Encode and validate version-1 records and CRC-32 checksums.
+ *
+ * Fields are serialized explicitly in little-endian order. Decoding checks
+ * the header, length, CRC, erased padding, and final commit unit.
+ */
 #include "log_format.h"
 
 #include <limits.h>
@@ -78,6 +84,10 @@ uint32_t elog_crc32(const uint8_t *bytes, size_t length)
     return ~crc;
 }
 
+/** @brief Reserve aligned body bytes and a separate final commit unit.
+ * Padding remains erased so the decoder can distinguish an intact body from
+ * a torn or unexpectedly programmed image.
+ */
 static elog_result_t make_layout(uint16_t stored_length,
                                   uint32_t granularity,
                                   elog_record_layout_t *layout)
@@ -99,6 +109,9 @@ static elog_result_t make_layout(uint16_t stored_length,
     return layout->total_length <= ELOG_MAX_RECORD ? ELOG_OK : ELOG_TOO_LARGE;
 }
 
+/** @brief Reject unsupported versions and inconsistent fixed header fields.
+ * Payload, CRC, padding, and commit verification happen after layout parsing.
+ */
 static elog_result_t check_header(const uint8_t *header)
 {
     if (memcmp(header, "ELOG", 4u) != 0) {

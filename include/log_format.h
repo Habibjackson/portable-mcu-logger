@@ -1,3 +1,9 @@
+/** @file
+ * @brief Version-1 page and record serialization helpers.
+ *
+ * Multi-byte fields have explicit little-endian layout. A record body and
+ * CRC are verified before a separate final program unit marks it committed.
+ */
 #ifndef ELOG_FORMAT_H
 #define ELOG_FORMAT_H
 

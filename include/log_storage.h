@@ -1,3 +1,9 @@
+/** @file
+ * @brief Synchronous device-relative storage contract for the journal.
+ *
+ * Backends supply erase geometry, bounded reads and writes, and completion
+ * status. The application reserves the permitted address range separately.
+ */
 #ifndef ELOG_STORAGE_H
 #define ELOG_STORAGE_H
 

@@ -1,9 +1,11 @@
 /** @file
- * @brief PlatformIO compile example with placeholder robot signals.
+ * @brief PlatformIO compile example with fault-window placeholder signals.
  *
- * Uses RAM storage until a production flash layout, bootloader, and
- * motor-control safe window are verified on hardware. This example formats
- * its volatile RAM image on every boot and does not persist to MCU flash.
+ * Samples continuously but queues telemetry only from synthetic fault onset
+ * through one recovery-boundary sample. It uses RAM storage until a production
+ * flash layout, bootloader, and motor-control safe window are verified on
+ * hardware. It formats its volatile RAM image on every boot and does not
+ * persist to flash.
  */
 #include "stm32f1xx_hal.h"
 
@@ -68,7 +70,7 @@ void SysTick_Handler(void)
     HAL_IncTick();
 }
 
-/** @brief Initialize a RAM-backed logger and emit sample robot telemetry.
+/** @brief Initialize a RAM-backed logger and emit fault-window telemetry.
  *
  * The timed fault transitions and sensor values are placeholders. Replace
  * them with actual safety signals and keep flash processing out of unsafe
@@ -95,8 +97,8 @@ int main(void)
     config.event_queue_depth = 4u;
     config.routine_queue_depth = 8u;
     config.isr_queue_depth = 4u;
-    config.pre_fault_depth = 4u;
-    config.post_fault_depth = 2u;
+    config.pre_fault_depth = 0u;
+    config.post_fault_depth = 0u;
     config.max_payload = 80u;
     config.fault_table_depth = 4u;
     config.storage_timeout_ms = 1u;
@@ -112,28 +114,33 @@ int main(void)
         const uint32_t now = HAL_GetTick();
         if (now - last_sample >= 100u) {
             last_sample = now;
+            /* Replace this timed condition and these values with real sensor
+             * readings and safety signals. Read sensors on every sample. */
+            const uint8_t fault_present = now >= 1000u && now < 1500u;
+            const uint8_t was_active = fault_active;
             uint8_t telemetry[24];
             put32(telemetry + 0u, 1000u); /* placeholder motor rpm */
             put32(telemetry + 4u, 120u);  /* placeholder current mA */
             put32(telemetry + 8u, 205u);  /* placeholder pressure x10 kPa */
             put32(telemetry + 12u, now);  /* placeholder encoder ticks */
-            put32(telemetry + 16u, fault_active);
+            put32(telemetry + 16u, fault_present);
             put32(telemetry + 20u, 0u);
-            note_logger_result(elog_write(&logger, ELOG_ROUTINE,
-                ELOG_TYPE_TELEMETRY, ROBOT_EXAMPLE_TELEMETRY_ID,
-                telemetry, sizeof telemetry));
-        }
-        /* Replace these timed transitions with the robot's safety signals. */
-        if (now >= 1000u && now < 1500u && fault_active == 0u) {
-            fault_active = 1u;
-            note_logger_result(elog_fault(&logger,
-                ROBOT_EXAMPLE_MOTOR_FAULT_ID, NULL, 0u));
-        }
-        if (now >= 1500u && fault_active != 0u) {
-            fault_active = 0u;
-            note_logger_result(elog_fault_recovered(&logger,
-                                                    ROBOT_EXAMPLE_MOTOR_FAULT_ID,
-                                                    NULL, 0u));
+            if (fault_present != 0u && was_active == 0u) {
+                /* A real application must secure its outputs first. */
+                fault_active = 1u;
+                note_logger_result(elog_fault(&logger,
+                    ROBOT_EXAMPLE_MOTOR_FAULT_ID, telemetry,
+                    sizeof telemetry));
+            } else if (fault_present == 0u && was_active != 0u) {
+                fault_active = 0u;
+                note_logger_result(elog_fault_recovered(&logger,
+                    ROBOT_EXAMPLE_MOTOR_FAULT_ID, NULL, 0u));
+            }
+            if (fault_present != 0u || was_active != 0u) {
+                note_logger_result(elog_write(&logger, ELOG_ROUTINE,
+                    ELOG_TYPE_TELEMETRY, ROBOT_EXAMPLE_TELEMETRY_ID,
+                    telemetry, sizeof telemetry));
+            }
         }
         note_logger_result(elog_process(&logger));
         HAL_Delay(1u);

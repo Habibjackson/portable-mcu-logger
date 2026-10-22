@@ -1,3 +1,9 @@
+/** @file
+ * @brief Choose a page for the next journal generation.
+ *
+ * Critical pages are never selected for automatic erase. Event and routine
+ * lanes may reuse a torn or oldest inactive page when their free pages end.
+ */
 #include "log_internal.h"
 
 elog_result_t elog_choose_page(elog_t *logger, uint8_t priority,
@@ -15,6 +21,8 @@ elog_result_t elog_choose_page(elog_t *logger, uint8_t priority,
         }
     }
     if (priority == (uint8_t)ELOG_CRITICAL) {
+        /* Fault history requires explicit export and service; never recycle
+         * critical pages automatically when they are full. */
         return ELOG_STORAGE_FULL;
     }
     int16_t oldest = -1;
@@ -25,6 +33,8 @@ elog_result_t elog_choose_page(elog_t *logger, uint8_t priority,
             continue;
         }
         if (page->state == ELOG_PAGE_TORN) {
+            /* Torn pages have no reusable tail. They can only be used after
+             * a whole-page erase permitted by the application. */
             *index = (int16_t)i;
             *needs_erase = 1u;
             return ELOG_OK;

@@ -1,3 +1,9 @@
+/** @file
+ * @brief Exercise SPI NOR descriptor validation and mocked bus operations.
+ *
+ * The mock checks command, erase, program, and range behavior without
+ * claiming validation on a physical NOR chip.
+ */
 #include "log_storage_spi_nor.h"
 
 #include <stdio.h>
@@ -18,6 +24,7 @@ typedef struct {
     uint8_t fail_status;
 } mock_t;
 
+/** @brief Model chip-select transitions for the SPI command mock. */
 static elog_result_t select_chip(void *context, int active)
 {
     mock_t *mock = (mock_t *)context;
@@ -54,6 +61,7 @@ static elog_result_t select_chip(void *context, int active)
     return ELOG_OK;
 }
 
+/** @brief Interpret a bounded subset of NOR commands against mock memory. */
 static elog_result_t transfer(void *context, const uint8_t *tx,
                               uint8_t *rx, size_t count)
 {
@@ -106,6 +114,7 @@ static elog_result_t transfer(void *context, const uint8_t *tx,
     return ELOG_STORAGE_IO;
 }
 
+/** @brief Supply a deterministic clock for NOR status polling tests. */
 static uint32_t now_ms(void *context)
 {
     mock_t *mock = (mock_t *)context;

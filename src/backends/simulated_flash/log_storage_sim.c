@@ -1,3 +1,9 @@
+/** @file
+ * @brief Inject torn program and erase results over RAM flash.
+ *
+ * A configured operation changes only a prefix before returning an error.
+ * A simulated power cycle resets injection state while keeping image bytes.
+ */
 #include "log_storage_sim.h"
 
 #include <string.h>
@@ -38,6 +44,10 @@ static elog_result_t sim_read(void *context, uint32_t address,
                                 address, destination, length);
 }
 
+/** @brief Count each program call and optionally inject a torn write.
+ * The selected call changes at most partial_bytes, then returns the injected
+ * error without writing a commit unit unless that unit was selected itself.
+ */
 static elog_result_t sim_program(void *context, uint32_t address,
                                  const void *source, size_t length,
                                  uint32_t timeout_ms)
@@ -68,6 +78,7 @@ static elog_result_t sim_program(void *context, uint32_t address,
                                     length, timeout_ms);
 }
 
+/** @brief Count erases and optionally erase only a prefix before failing. */
 static elog_result_t sim_erase(void *context, uint32_t address,
                                uint32_t length, uint32_t timeout_ms)
 {

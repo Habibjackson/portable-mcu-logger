@@ -88,13 +88,13 @@ logger region during normal initialization. Type one command per line:
 
 | Command | Effect |
 | --- | --- |
-| `run`, `stop` | Start or stop one synthetic sample every 100 ms. |
+| `run`, `stop` | Start or stop one synthetic sensor sample every 100 ms; automatic flash logging starts at a fault. |
 | `wave triangle`, `wave saw`, `wave step` | Select motor-speed waveform. |
 | `routine` | Queue one telemetry record without a fault transition. |
 | `fault current`, `fault pressure`, `fault sensor` | Inject one critical fault. |
 | `recover current`, `recover pressure`, `recover sensor` | Record recovery of an active fault. |
 | `burst` | Queue 12 routine samples without processing; exercises eight-slot overflow. |
-| `status` | Flush pending work, then report record counts, stored/original bytes and compression ratio, queue and storage drops, storage errors, corrupt scans, page erases, queue occupancy, safe state, and timing maxima. |
+| `status` | Flush pending work, then report samples taken, committed record counts, stored/original bytes and compression ratio, queue and storage drops, storage errors, corrupt scans, page erases, queue occupancy, safe state, and timing maxima. |
 | `reset` | Commit a simulated software-reset event, then reset the MCU. |
 | `dump` | Print the complete 8 KiB logger region as framed hex. |
 | `fill critical` | Fill the two critical pages to exercise `ELOG_STORAGE_FULL`; use this last. Critical pages are never automatically erased. |
@@ -108,6 +108,31 @@ three fault types emit recovery records when their condition clears. Fault
 handling latches the safe-state LED **before** calling the logger, and logger
 errors or dropped routine records also latch it. This is a safety-signal
 demonstration, not evidence of motor-control timing or an actuator shutoff.
+
+### Automatic fault-window logging
+
+`run` still checks the synthetic sensors every 100 ms, including while all
+readings are healthy. Healthy readings are not queued, so an idle, drained
+logger makes no flash program or erase calls. At a threshold crossing the app
+queues the critical fault before its first telemetry sample, then saves every
+100 ms sensor sample while any fault is detected. It saves one more sample when
+the last fault clears and queues a recovery record. This captures the sensor
+values that caused the fault and how they changed until recovery. Built-in
+pre-fault and post-fault snapshots are disabled for this app; therefore there
+is no earlier sensor history in flash. `routine` and `burst` are deliberate
+console test commands that still write samples while healthy. `reset` and
+manual fault commands also write records by request.
+
+`status` shows `samples=` separately from retained `routine=` records. To
+check the policy, start with a drained logger before a synthetic fault,
+compare `status` readings during a short healthy interval, and confirm that
+`samples` rises while `routine`, `faults`, and `erases_this_boot` stay put.
+Continue through a fault and recovery; the record counts should then rise.
+Pending fault-window records can still finish committing after the fault
+clears. A long fault can rotate the routine pages and overwrite older sensor
+samples; queue overflow can drop samples if flash processing falls behind.
+Critical fault pages never rotate automatically, so export and service a full
+critical partition before relying on further fault persistence.
 
 For `status`, `ratio_pct` is stored payload bytes divided by original payload
 bytes across currently retained committed records. It excludes record headers
@@ -134,8 +159,8 @@ field names, scaling, and units. An unknown event remains labeled as unmapped
 with raw bytes. The decoder also supports JSON output by omitting `--human`.
 The logger records the fault classification supplied by the test application;
 it cannot independently determine a physical root cause.
-The timeline is ordered by committed sequence number; pre-fault telemetry is
-copied into storage after the fault and retains its earlier sample timestamp.
+The timeline is ordered by committed sequence number. This test app records no
+pre-fault telemetry during automatic `run` sampling.
 
 ## Test procedure
 
@@ -147,17 +172,21 @@ copied into storage after the fault and retains its earlier sample timestamp.
    interrupt page-header, record-body, commit, and erase operations. The C8
    host test writes through 1 KiB page rotations and checks a patterned
    56 KiB application prefix never changes.
-2. On a real board, record the initial `status`. Run `routine`, then `status`;
-   inspect routine count. Run `fault current` and `recover current`, then
-   `status`; inspect fault count and a decoded dump. Run `burst`, then `status`
-   and observe routine queue drops and the latched LED.
+2. On a real board with available critical storage, record the initial
+   `status`, start `run`, and compare `status` after a healthy interval before
+   sample 12: `samples` should rise without new automatic records. Continue
+   through an automatic fault and recovery, then `stop`, `status`, and decode
+   a dump. Check that sensor records begin at the fault and include a recovery
+   boundary sample. Separately test manual `routine`, `fault current`,
+   `recover current`, and `burst`; the latter should report routine queue drops
+   and latch the LED.
 3. Reset with `reset` after recording the committed count. Observe
    `logger_init=0`, reset cause, and the retained count on the next boot.
    Export and decode a dump to confirm earlier sequences remain. A reset
    during an actual flash program needs controlled lab equipment; the host
    fault-injection suite is the automated interrupted-write check.
-4. With a scope or logic analyzer as needed, compare the timing maxima at
-   idle and while `run` is generating records. Check actual interrupt and
+4. With a scope or logic analyzer as needed, compare the timing maxima while
+   healthy and while `run` is committing fault records. Check actual interrupt and
    control deadlines on the intended hardware. Internal flash operations can
    stall CPU fetches; a passing build cannot establish real-time safety.
 5. Use `fill critical` only after exporting desired logs. Verify the full
@@ -165,7 +194,20 @@ copied into storage after the fault and retains its earlier sample timestamp.
    behavior follows the application policy. Servicing critical storage
    requires an explicit export and erase procedure for this test board.
 
-## Physical test results (2026-10-18)
+## Current source verification (2026-10-22)
+
+The CMake host build and all 17 CTest checks pass, including the new
+fault-window and compression examples. Both PlatformIO targets build with
+their post-link layout checks: `bluepill_f103c8` uses 8,552 of 20,480 RAM
+bytes, and `genericSTM32F103RD` uses 10,472 of 65,536 RAM bytes. These are
+build and host-test results. The current fault-window firmware has not been
+uploaded or measured on the Blue Pill.
+
+## Physical test results (2026-10-18, earlier continuous-logging firmware)
+
+The measurements below describe the firmware used on that date. The
+fault-window policy above has passed host tests and built for the Blue Pill,
+but has not been programmed or measured on physical hardware.
 
 An ST-LINK V2 was connected to a Blue Pill at about 3.30 V. OpenOCD detected a
 Cortex-M3 and medium-density device ID `0x410`. The factory flash-size field

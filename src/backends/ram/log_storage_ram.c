@@ -1,8 +1,15 @@
+/** @file
+ * @brief In-memory implementation of the flash storage operations.
+ *
+ * The model checks erase-before-program, program alignment, and whole
+ * erase regions. It is suitable for host tests, not persistent MCU storage.
+ */
 #include "log_storage_ram.h"
 #include "log_config.h"
 
 #include <string.h>
 
+/** @brief Check a device-relative range without overflowing its end. */
 static int in_bounds(const elog_ram_storage_t *ram, uint32_t address,
                      size_t length)
 {
@@ -24,6 +31,7 @@ static uint32_t ram_max_program(void *context)
     return ((const elog_ram_storage_t *)context)->max_program_size;
 }
 
+/** @brief Return the whole configured erase region containing an address. */
 static elog_result_t ram_region(void *context, uint32_t address,
                                 elog_erase_region_t *region)
 {
@@ -54,6 +62,9 @@ static elog_result_t ram_read(void *context, uint32_t address,
     return ELOG_OK;
 }
 
+/** @brief Model a flash program that can change only erased aligned units.
+ * A call may not cross an erase-region boundary or exceed max_program_size.
+ */
 static elog_result_t ram_program(void *context, uint32_t address,
                                  const void *source, size_t length,
                                  uint32_t timeout_ms)
@@ -82,6 +93,7 @@ static elog_result_t ram_program(void *context, uint32_t address,
     return ELOG_OK;
 }
 
+/** @brief Erase exactly one declared whole region to 0xFF. */
 static elog_result_t ram_erase(void *context, uint32_t address,
                                uint32_t length, uint32_t timeout_ms)
 {

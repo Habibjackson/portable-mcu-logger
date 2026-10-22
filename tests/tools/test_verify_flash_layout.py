@@ -10,6 +10,7 @@ from verify_flash_layout import verify
 
 
 def fixture(load_address, log_start, log_end, vector_address=0x08000000):
+    """Construct a minimal ELF32 image with configurable flash boundaries."""
     image = bytearray(512)
     image[:6] = b"\x7fELF\x01\x01"
     struct.pack_into("<HHIIIIIHHHHHH", image, 16,
@@ -36,6 +37,7 @@ def fixture(load_address, log_start, log_end, vector_address=0x08000000):
 
 
 def expect_failure(path, image, target, message):
+    """Require an unsafe fixture to fail with the expected diagnostic."""
     path.write_bytes(image)
     try:
         verify(path, target)
@@ -46,6 +48,7 @@ def expect_failure(path, image, target, message):
 
 
 def main():
+    """Check valid RD/C8 layouts and representative overlap failures."""
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "fixture.elf"
         for target, start, end in (("rd", 0x08058000, 0x08060000),

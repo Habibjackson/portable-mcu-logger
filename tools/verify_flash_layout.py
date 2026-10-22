@@ -17,6 +17,12 @@ TARGETS = {
 
 
 def verify(path, target="rd"):
+    """Check one ELF against the selected MCU's reserved flash layout.
+
+    Validate vectors, linker symbols, and loadable/allocated firmware ranges.
+    Return the loaded end and logger bounds; raise ValueError on any mismatch.
+    The check cannot prove what unrelated data is already on a physical board.
+    """
     if target not in TARGETS:
         raise ValueError(f"unsupported target {target}")
     profile = TARGETS[target]
@@ -108,6 +114,7 @@ def verify(path, target="rd"):
 
 
 def main():
+    """Read an ELF path and target profile, then print verified boundaries."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("elf", type=Path)
     parser.add_argument("--target", choices=TARGETS, default="rd")

@@ -3,7 +3,9 @@
  *
  * The simulated flash wrapper changes a few bytes of one program call, then
  * reports an error. A new logger instance scans the retained image without
- * erasing it. Real power-cut behavior still needs hardware testing.
+ * erasing it. Only fully committed records reappear after the simulated
+ * reboot. New records can use the other event page after a torn tail is
+ * sealed in RAM metadata. Real power-cut behavior still needs hardware tests.
  */
 #include "log.h"
 #include "log_storage_ram.h"
@@ -29,6 +31,11 @@ typedef struct {
     size_t count;
 } seen_records_t;
 
+/** @brief Collect event IDs from records visible after a simulated reboot.
+ * @param context Address of a bounded three-ID result buffer.
+ * @param record Borrowed validated record; no payload pointer is retained.
+ * @return Zero to continue, nonzero on an unexpected type or excess record.
+ */
 static int collect_event(void *context, const elog_record_t *record)
 {
     seen_records_t *seen = (seen_records_t *)context;
@@ -39,6 +46,11 @@ static int collect_event(void *context, const elog_record_t *record)
     return 0;
 }
 
+/** @brief Describe the same partition layout for both logger lifetimes.
+ * @return Fully configured policy for the persistent RAM image.
+ * @note The first logger and the fresh post-reboot logger must agree on
+ *       geometry, record limits, and codec settings.
+ */
 static elog_config_t configuration(void)
 {
     elog_config_t config = {0};
@@ -60,6 +72,11 @@ static elog_config_t configuration(void)
     return config;
 }
 
+/** @brief Commit one event, interrupt another, then rescan without formatting.
+ * @return Zero only when the first event survives, the torn event is absent,
+ *         and a new event can be committed and read back after recovery.
+ * @note The injected timeout models one cut point, not real electrical loss.
+ */
 int main(void)
 {
     for (uint32_t i = 0u; i < PAGE_COUNT; ++i) {

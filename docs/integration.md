@@ -35,6 +35,50 @@ The STM32F103C8T6 Blue Pill test build has a separate 1 KiB-page flash
 reservation and a UART dump command. Its wiring, programming, and recovery
 procedure are in [bluepill_hardware_test.md](bluepill_hardware_test.md).
 
+For fault-only sensor retention, continue reading sensors at the required
+rate, detect fault onset from those readings, and call `elog_write` only from
+the first fault sample until recovery. Call `elog_fault` before queueing the
+first sensor sample, and keep `elog_process` running until pending records
+commit. The [fault-window example](../examples/fault_window/main.c) shows this
+policy with host-checked flash write counts and exact sensor payloads. Set
+`pre_fault_depth = post_fault_depth = 0` if no extra snapshots are wanted.
+This is an application policy; it does not change the on-flash record format.
+If a fault also needs earlier readings without healthy flash writes, the
+[pre-trigger example](../examples/pretrigger_capture/main.c) keeps a bounded
+application RAM ring and embeds original acquisition times in its payloads.
+The [rate-limit example](../examples/rate_limited_telemetry/main.c) shows a
+separate way to reduce routine records with `routine_interval_ms` while
+state-change events still use their own priority lane.
+
+## Compression and readback
+
+Set `config.codec_id` to `ELOG_CODEC_NONE`, `ELOG_CODEC_VARINT`, or
+`ELOG_CODEC_DELTA`. The built-in numeric modes expect nonempty payloads made
+of little-endian signed 32-bit words. Set `snapshot_interval` to a positive
+value for DELTA and zero for the other built-in modes. DELTA needs a prior
+matching telemetry record; the first sample and periodic snapshots are stored
+raw. Compression is attempted only for routine telemetry, and an encoded
+payload is kept only when it is shorter than the original. The
+[built-in comparison example](../examples/compression_modes/main.c) writes
+identical readings under all three modes and checks their decoded bytes.
+
+For an application codec, use an ID from 128 through 255 and supply a stable
+`elog_codec_t` with bounded encode and decode callbacks. Each record must be
+independently decodable. The [custom RLE example](../examples/custom_rle_codec/main.c)
+shows registration, a raw fallback, and readback. Keep the codec definition
+available to every exporter that reads its records; the supplied Python
+decoder handles the built-in modes but does not decode application IDs.
+`ELOG_CODEC_BLOCK` is reserved and has no implementation.
+
+`elog_iterate_records` validates committed records but returns their **stored**
+payloads. Copy the payload while the visitor is running, order records by
+`sequence` when needed, and dispatch decoding using each record's persisted
+`codec_id`. A DELTA decoder needs the decoded base sample named by the stored
+base sequence. See the [record format](record_format.md) for the exact byte
+layouts and [examples guide](../examples/README.md#compare-built-in-compression-modes)
+for runnable output. Reported payload savings exclude journal headers, CRC,
+commit bytes, alignment, and page headers.
+
 ## Switching storage without changing logging calls
 
 Construct `elog_storage_t storage` from one of:

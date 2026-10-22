@@ -1,3 +1,9 @@
+/** @file
+ * @brief Check lossless numeric codec round trips and malformed inputs.
+ *
+ * Tests cover direct VARINT/DELTA calls and journal codec behavior,
+ * including snapshot and fallback rules.
+ */
 #include "log.h"
 #include "log_codec.h"
 #include "log_storage_ram.h"
@@ -16,6 +22,7 @@ static void put32(uint8_t *p, uint32_t value)
     }
 }
 
+/** @brief Round-trip extreme 32-bit values and reject broken DELTA inputs. */
 static int test_codec_functions(void)
 {
     uint8_t source[24];
@@ -75,6 +82,7 @@ static int collect(void *context, const elog_record_t *record)
     return 0;
 }
 
+/** @brief Check periodic raw snapshots and compression fallback in records. */
 static int test_core_delta_and_fallback(void)
 {
     uint8_t memory[8u * 256u];
@@ -175,6 +183,7 @@ static elog_result_t repeat_decode(void *context, const uint8_t *source,
     return ELOG_OK;
 }
 
+/** @brief Verify independent custom codec records through the journal path. */
 static int test_custom_codec_integration(void)
 {
     uint8_t memory[6u * 256u];

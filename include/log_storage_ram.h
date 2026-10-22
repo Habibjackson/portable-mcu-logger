@@ -1,3 +1,9 @@
+/** @file
+ * @brief RAM-backed flash model for host examples and tests.
+ *
+ * Programming requires erased bytes and respects caller-supplied geometry.
+ * Formatting is explicit and destroys the image; initialization preserves it.
+ */
 #ifndef ELOG_STORAGE_RAM_H
 #define ELOG_STORAGE_RAM_H
 

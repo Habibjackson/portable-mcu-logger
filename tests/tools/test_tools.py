@@ -1,3 +1,9 @@
+"""Check host export, strict decoding, UART extraction, and wear estimates.
+
+The CMake test launches a real host-demo executable and uses temporary files;
+it never reads from or writes to a connected MCU.
+"""
+
 import subprocess
 import sys
 import tempfile
@@ -5,6 +11,7 @@ from pathlib import Path
 
 
 def main():
+    """Build one temporary log image and assert tool round trips and errors."""
     demo = Path(sys.argv[1])
     root = Path(sys.argv[2])
     sys.path.insert(0, str(root / "tools"))

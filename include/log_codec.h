@@ -1,3 +1,9 @@
+/** @file
+ * @brief Lossless telemetry codec interface and built-in numeric codecs.
+ *
+ * VARINT and DELTA operate on little-endian signed 32-bit words. Custom
+ * codecs use IDs 128..255 and must be independently reversible per record.
+ */
 #ifndef ELOG_CODEC_H
 #define ELOG_CODEC_H
 

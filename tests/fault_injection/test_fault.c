@@ -1,3 +1,9 @@
+/** @file
+ * @brief Inject partial flash operations and check reboot recovery.
+ *
+ * Program and erase cut points are modeled with retained RAM bytes.
+ * These deterministic cuts do not replace electrical power-loss testing.
+ */
 #include "log.h"
 #include "log_storage_ram.h"
 #include "log_storage_sim.h"
@@ -43,6 +49,7 @@ static elog_config_t config(void)
     return cfg;
 }
 
+/** @brief Cut one numbered program operation and check subsequent recovery. */
 static int one_cut(uint32_t call, size_t partial)
 {
     uint8_t memory[6u * 256u];
@@ -83,6 +90,7 @@ static int one_cut(uint32_t call, size_t partial)
     return 0;
 }
 
+/** @brief Reject a committed image after intentional CRC-visible corruption. */
 static int test_crc_corruption(void)
 {
     uint8_t memory[6u * 256u];
@@ -116,6 +124,7 @@ static int test_crc_corruption(void)
     return 0;
 }
 
+/** @brief Interrupt one erase after a byte prefix and rescan retained pages. */
 static int one_erase_cut(size_t partial)
 {
     uint8_t memory[6u * 256u];
@@ -159,6 +168,7 @@ static int one_erase_cut(size_t partial)
     return 0;
 }
 
+/** @brief Refuse unknown format versions instead of guessing their layout. */
 static int test_unknown_versions(void)
 {
     uint8_t memory[6u * 256u];

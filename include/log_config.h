@@ -1,3 +1,9 @@
+/** @file
+ * @brief Compile-time bounds and the runtime logger policy.
+ *
+ * Runtime queue depths, partitions, and payload size must fit these bounds.
+ * elog_init() checks the policy against the selected storage geometry.
+ */
 #ifndef ELOG_CONFIG_H
 #define ELOG_CONFIG_H
 

@@ -3,7 +3,9 @@
  *
  * This RAM image models erased flash. It exists only for this process and is
  * formatted once when the example starts. Real nonvolatile storage must not
- * be formatted on every boot.
+ * be formatted on every boot. The program queues routine telemetry before an
+ * event, commits both, and reads them back to show event priority. It uses
+ * codec NONE so the eight payload bytes are directly readable.
  */
 #include "log.h"
 #include "log_storage_ram.h"
@@ -23,11 +25,19 @@ static elog_storage_t storage;
 static elog_t logger;
 static uint64_t now_ms;
 
+/** @brief Supply the caller's monotonic millisecond time to the logger.
+ * @param context Address of now_ms, kept alive for the logger lifetime.
+ * @return Uptime recorded when each enqueue call is made.
+ */
 static uint64_t timestamp(void *context)
 {
     return *(const uint64_t *)context;
 }
 
+/** @brief Serialize one sensor field as four little-endian bytes.
+ * @param target At least four writable bytes in the application payload.
+ * @param value Unsigned sensor value to encode without C struct padding.
+ */
 static void put_u32(uint8_t *target, uint32_t value)
 {
     for (unsigned int i = 0u; i < 4u; ++i) {
@@ -35,6 +45,10 @@ static void put_u32(uint8_t *target, uint32_t value)
     }
 }
 
+/** @brief Read one uncompressed sensor field from a committed payload.
+ * @param source At least four readable bytes valid during the visitor call.
+ * @return Decoded unsigned field value.
+ */
 static uint32_t get_u32(const uint8_t *source)
 {
     uint32_t value = 0u;
@@ -44,6 +58,12 @@ static uint32_t get_u32(const uint8_t *source)
     return value;
 }
 
+/** @brief Print one validated record and count it during storage iteration.
+ * @param context Address of the caller-owned record counter.
+ * @param record Borrowed record; its payload must not outlive this callback.
+ * @return Zero to continue visiting all committed records.
+ * @note Decode payload bytes directly only because this example uses NONE.
+ */
 static int show_record(void *context, const elog_record_t *record)
 {
     size_t *count = (size_t *)context;
@@ -64,6 +84,11 @@ static int show_record(void *context, const elog_record_t *record)
     return 0;
 }
 
+/** @brief Initialize a new RAM fixture, queue two records, and read them back.
+ * @return Zero when both commits and the session counters match expectations;
+ *         nonzero on setup, queue, commit, or readback failure.
+ * @note Enqueue success copies into RAM; elog_flush() performs the commit.
+ */
 int main(void)
 {
     for (uint32_t i = 0u; i < PAGE_COUNT; ++i) {

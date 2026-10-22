@@ -1,3 +1,15 @@
+/** @file
+ * @brief Export a compressed telemetry and fault session as a raw log image.
+ *
+ * This host-only program models sixteen 2 KiB flash erase pages in RAM and
+ * formats the new fixture once. It commits six 24-byte robot readings, a
+ * motor fault, a motor-stopped event, and recovery. DELTA compression is
+ * configured with periodic snapshots. Pre/post-fault capture is enabled, but
+ * this session supplies no telemetry after the fault for post-fault capture.
+ * The output file contains the entire 32 KiB storage image, including erased
+ * bytes. Decode it with tools/decode_logs.py and examples/robot_schema.json.
+ * The example does not program an MCU or demonstrate real actuator shutdown.
+ */
 #include "log.h"
 #include "log_storage_ram.h"
 #include "robot_example_ids.h"
@@ -11,11 +23,19 @@ static elog_erase_region_t pages[16];
 static elog_t logger;
 static uint64_t uptime_ms;
 
+/** @brief Supply a monotonic millisecond timestamp to queued records.
+ * @param context Address of uptime_ms, alive until the logger is destroyed.
+ * @return Current simulated uptime; it is not a wall-clock date.
+ */
 static uint64_t timestamp(void *context)
 {
     return *(const uint64_t *)context;
 }
 
+/** @brief Serialize one robot field as little-endian bytes.
+ * @param bytes At least four writable payload bytes.
+ * @param value Unsigned sample field; the decoder schema supplies its units.
+ */
 static void put32(uint8_t *bytes, uint32_t value)
 {
     for (unsigned int i = 0u; i < 4u; ++i) {
@@ -23,6 +43,14 @@ static void put32(uint8_t *bytes, uint32_t value)
     }
 }
 
+/** @brief Commit an example session and write the complete RAM flash image.
+ * @param argc Must be two: program name and destination path.
+ * @param argv argv[1] is the output binary file; the caller chooses its path.
+ * @return Zero on successful logger commits and full file write, 2 for usage
+ *         error, or 1 for storage, logger, or output failure.
+ * @note Queue success is not durability. Each elog_flush() must finish before
+ *       the image is exported; real flash needs a reserved region and recovery.
+ */
 int main(int argc, char **argv)
 {
     if (argc != 2) {

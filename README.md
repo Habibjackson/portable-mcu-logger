@@ -23,11 +23,18 @@ python tools/decode_logs.py build/demo_logs.bin --page-size 2048 --granularity 2
 ```
 
 For smaller examples, run `./build/elog_quickstart`,
-`./build/elog_reboot_recovery`, and `./build/elog_isr_safe_state` (append `.exe` on
-Windows). They show first setup, reboot recovery after a simulated torn write,
-and safe-state fault capture from an ISR. See the
-[examples guide](examples/README.md) for commands, expected output, and usage
-notes.
+`./build/elog_reboot_recovery`, `./build/elog_isr_safe_state`, and
+`./build/elog_fault_window` (append `.exe` on Windows). Also try
+`./build/elog_pretrigger_capture` for a RAM history saved at fault time and
+`./build/elog_rate_limited_telemetry` for bounded routine logging. They show
+first setup, reboot recovery after a simulated torn write, safe-state fault
+capture from an ISR, and different sensor retention policies.
+Run `./build/elog_compression_modes` to compare the built-in raw, VARINT, and
+DELTA modes on the same readings, or `./build/elog_custom_rle_codec` for a
+registered per-record run-length codec (append `.exe` on Windows). Both decode
+their committed records and check the original bytes.
+See the [examples guide](examples/README.md) for commands, expected output,
+and usage notes.
 
 PlatformIO target build:
 
@@ -48,6 +55,9 @@ flash and 20 KiB SRAM. It reserves the final 8 KiB of flash for a synthetic
 hardware-test logger and reports status over USART1. See the
 [Blue Pill hardware test guide](docs/bluepill_hardware_test.md) for its memory
 map, wiring, commands, export steps, and physical test checklist.
+The test app samples every 100 ms but automatically saves sensor telemetry only
+from fault onset through a recovery-boundary sample. Healthy sampling creates
+no flash writes once pending work is drained.
 
 To turn the host demo's raw numbers into an example event timeline:
 

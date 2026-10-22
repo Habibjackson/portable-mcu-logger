@@ -7,6 +7,11 @@ from pathlib import Path
 
 
 def extract(text):
+    """Return one complete framed logger image from console transcript text.
+
+    Each body line must contain exactly 16 hex bytes. Incomplete, oversized,
+    or malformed frames raise ValueError instead of yielding a partial image.
+    """
     lines = text.splitlines()
     for index, line in enumerate(lines):
         marker = line.strip().split()
@@ -32,6 +37,7 @@ def extract(text):
 
 
 def main():
+    """Convert a transcript path to a binary image for the log decoder."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript", type=Path, help="captured serial-console text")
     parser.add_argument("output", type=Path, help="raw binary logger image")

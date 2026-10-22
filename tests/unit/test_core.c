@@ -1,3 +1,9 @@
+/** @file
+ * @brief Exercise queue priority, fault transitions, rotation, and recovery.
+ *
+ * These host checks use RAM flash geometry and assert retained records and
+ * counters after normal operation, overflow, and capacity boundaries.
+ */
 #include "log.h"
 #include "log_storage_ram.h"
 
@@ -80,6 +86,7 @@ static int visit(void *context, const elog_record_t *record)
     return 0;
 }
 
+/** @brief Confirm critical/event scheduling and read-only reboot scanning. */
 static int test_priority_and_reboot(void)
 {
     fixture_t fixture;
@@ -115,6 +122,7 @@ static int test_priority_and_reboot(void)
     return 0;
 }
 
+/** @brief Check bounded fault and ISR queues plus repeated-fault accounting. */
 static int test_overflow_faults_and_isr(void)
 {
     fixture_t fixture;
@@ -146,6 +154,7 @@ static int test_overflow_faults_and_isr(void)
     return 0;
 }
 
+/** @brief Seal an interrupted tail and continue on a different erase page. */
 static int test_torn_tail_and_rotation(void)
 {
     fixture_t fixture;
@@ -174,6 +183,7 @@ static int test_torn_tail_and_rotation(void)
     return 0;
 }
 
+/** @brief Reject unsupported or internally inconsistent runtime policies. */
 static int test_bad_config(void)
 {
     fixture_t fixture;
@@ -188,6 +198,7 @@ static int test_bad_config(void)
     return 0;
 }
 
+/** @brief Verify routine replacement reports and counts the displaced entry. */
 static int test_routine_queue_drop(void)
 {
     fixture_t fixture;
@@ -214,6 +225,7 @@ static int test_routine_queue_drop(void)
     return 0;
 }
 
+/** @brief Check the optional bounded telemetry snapshot around an ISR fault. */
 static int test_isr_fault_telemetry_window(void)
 {
     fixture_t fixture;
@@ -257,6 +269,7 @@ static int test_isr_fault_telemetry_window(void)
     return 0;
 }
 
+/** @brief Keep event and routine lanes usable after critical pages fill. */
 static int test_critical_full_does_not_block_other_lanes(void)
 {
     fixture_t fixture;
@@ -296,6 +309,7 @@ static int test_critical_full_does_not_block_other_lanes(void)
     return 0;
 }
 
+/** @brief Check oldest-page rotation and wrapping sequence comparisons. */
 static int test_rotation_and_sequence_wrap(void)
 {
     fixture_t fixture;
@@ -351,6 +365,7 @@ static uint32_t odd_program_size(void *context)
     return 3u;
 }
 
+/** @brief Reject backend program geometry the journal cannot safely use. */
 static int test_bad_storage_geometry(void)
 {
     fixture_t fixture;

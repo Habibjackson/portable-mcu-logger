@@ -1,3 +1,9 @@
+/** @file
+ * @brief Reversible VARINT and DELTA codecs for 32-bit telemetry words.
+ *
+ * The byte streams use ZigZag LEB128 values. DELTA stores a base sequence
+ * so a decoder can reject an unavailable or mismatched prior sample.
+ */
 #include "log_codec.h"
 #include "log_config.h"
 
@@ -28,18 +34,23 @@ static void write_i32(uint8_t *p, int64_t value)
     }
 }
 
+/** @brief Map a signed difference to an unsigned value for LEB128 coding. */
 static uint64_t zigzag(int64_t value)
 {
     return value >= 0 ? (uint64_t)value << 1 :
            (((uint64_t)(-value) << 1) - 1u);
 }
 
+/** @brief Reverse ZigZag coding after varint bounds have been checked. */
 static int64_t unzigzag(uint64_t value)
 {
     return (value & 1u) == 0u ? (int64_t)(value >> 1) :
            -(int64_t)((value >> 1) + 1u);
 }
 
+/** @brief Append one bounded unsigned LEB128 value to an output buffer.
+ * position advances only as bytes are written; callers report size errors.
+ */
 static elog_result_t put_varint(uint64_t value, uint8_t *destination,
                                 size_t capacity, size_t *position)
 {
@@ -57,6 +68,10 @@ static elog_result_t put_varint(uint64_t value, uint8_t *destination,
     return ELOG_OK;
 }
 
+/** @brief Parse one bounded LEB128 value, rejecting overflow and truncation.
+ * At most ten bytes can represent a uint64_t, and the tenth byte has only
+ * one usable payload bit.
+ */
 static elog_result_t get_varint(const uint8_t *source, size_t length,
                                 size_t *position, uint64_t *value)
 {

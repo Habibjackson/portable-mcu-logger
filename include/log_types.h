@@ -1,3 +1,9 @@
+/** @file
+ * @brief Result codes, record priorities, types, and codec identifiers.
+ *
+ * Positive result codes describe nonfatal flow control; negative values
+ * report rejected operations or storage and format errors.
+ */
 #ifndef ELOG_TYPES_H
 #define ELOG_TYPES_H
 

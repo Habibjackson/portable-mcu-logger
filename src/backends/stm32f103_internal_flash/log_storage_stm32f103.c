@@ -1,3 +1,10 @@
+/** @file
+ * @brief Adapt STM32F103 HAL flash calls to the reserved logger region.
+ *
+ * Compile-time MCU density selects nominal capacity and page geometry.
+ * Linker symbols bound all operations; program and erase verify readback.
+ * Internal flash can stall CPU fetches, so callers must choose safe timing.
+ */
 #include "log_storage_stm32f103.h"
 
 #include "stm32f1xx_hal.h"
@@ -27,6 +34,7 @@
 extern uint8_t __elog_start[];
 extern uint8_t __elog_end[];
 
+/** @brief Reject access outside linker-provided device-relative boundaries. */
 static int allowed(const elog_stm32f103_flash_t *adapter,
                    uint32_t address, size_t length)
 {
@@ -35,6 +43,7 @@ static int allowed(const elog_stm32f103_flash_t *adapter,
            length <= (size_t)(adapter->allowed_end - address);
 }
 
+/** @brief Translate HAL completion states without collapsing busy or timeout. */
 static elog_result_t hal_result(HAL_StatusTypeDef result)
 {
     if (result == HAL_OK) {
@@ -67,6 +76,7 @@ static uint32_t f103_max_program(void *context)
     return ELOG_F103_PROGRAM_MAX;
 }
 
+/** @brief Return the selected density family's complete flash erase page. */
 static elog_result_t f103_region(void *context, uint32_t address,
                                   elog_erase_region_t *region)
 {
@@ -104,6 +114,10 @@ static elog_result_t f103_read(void *context, uint32_t address,
     return ELOG_OK;
 }
 
+/** @brief Program erased halfwords inside the reserved region and verify them.
+ * HAL uses FLASH_TIMEOUT_VALUE internally. Reject a shorter requested bound
+ * rather than claiming the caller's limit is enforced by the HAL call.
+ */
 static elog_result_t f103_program(void *context, uint32_t address,
                                    const void *source, size_t length,
                                    uint32_t timeout_ms)
@@ -155,6 +169,10 @@ static elog_result_t f103_program(void *context, uint32_t address,
     return result != ELOG_OK ? result : lock_result;
 }
 
+/** @brief Erase and verify exactly one reserved 1 KiB or 2 KiB page.
+ * An application timing policy must decide when it is safe to invoke this
+ * blocking HAL operation; the backend only enforces geometry and bounds.
+ */
 static elog_result_t f103_erase(void *context, uint32_t address,
                                  uint32_t length, uint32_t timeout_ms)
 {

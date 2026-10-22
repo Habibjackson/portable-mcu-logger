@@ -1,3 +1,10 @@
+/** @file
+ * @brief Build page geometry and scan retained journal data on startup.
+ *
+ * Scanning is read-only. Valid committed records advance the page tail;
+ * damaged or partially programmed tails are sealed in RAM metadata so the
+ * journal does not overwrite bytes whose erased state is uncertain.
+ */
 #include "log_internal.h"
 
 #include <limits.h>
@@ -45,6 +52,10 @@ static int all_erased(const uint8_t *bytes, size_t length)
     return 1;
 }
 
+/** @brief Confirm that an apparently empty tail is erased all the way out.
+ * A blank header alone is insufficient: later bytes may contain a torn write.
+ * A true is_erased result means every byte in the range was read as 0xFF.
+ */
 static elog_result_t check_erased_range(elog_t *logger,
                                         const elog_page_t *page,
                                         uint32_t start_offset,
@@ -205,6 +216,8 @@ elog_result_t elog_scan_pages(elog_t *logger)
             return result;
         }
         if (all_erased(logger->page_image, ELOG_PAGE_HEADER_SIZE)) {
+            /* Reuse is safe only when the entire page, not just its header,
+             * is blank. Preserve any uncertain bytes as a torn page. */
             uint8_t fully_erased;
             result = check_erased_range(logger, page,
                                         ELOG_PAGE_HEADER_SIZE, &fully_erased);
@@ -286,6 +299,8 @@ elog_result_t elog_scan_pages(elog_t *logger)
                 ++logger->statistics.corrupt_records;
                 break;
             }
+            /* A previously failed commit may actually have reached flash.
+             * Record that fact so recovery will not replay it twice. */
             if (logger->has_pending != 0u &&
                 record.sequence == logger->pending_sequence &&
                 record.event_id == logger->pending.event_id &&

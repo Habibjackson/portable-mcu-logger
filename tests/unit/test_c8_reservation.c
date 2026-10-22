@@ -1,4 +1,9 @@
-/* Exercise 1 KiB Blue Pill geometry with an unprotected firmware prefix. */
+/** @file
+ * @brief Exercise the Blue Pill's 1 KiB page geometry and flash reservation.
+ *
+ * A patterned application prefix models the firmware region. Logger writes
+ * and page rotations must leave every byte of that prefix unchanged.
+ */
 #include "log.h"
 #include "log_storage_ram.h"
 
@@ -16,6 +21,7 @@ static elog_storage_t storage;
 static elog_t logger;
 static elog_t rebooted;
 
+/** @brief Describe 1 KiB erase pages and the final 8 KiB C8 logger region. */
 static elog_config_t configuration(void)
 {
     elog_config_t config;

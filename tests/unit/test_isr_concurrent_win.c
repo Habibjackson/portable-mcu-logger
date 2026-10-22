@@ -1,3 +1,9 @@
+/** @file
+ * @brief Stress the single-producer ISR ingress against a task consumer.
+ *
+ * Windows host threads model concurrent capture and processing; the test
+ * does not measure interrupt timing on an MCU.
+ */
 #include "log.h"
 #include "log_storage_ram.h"
 
@@ -18,6 +24,7 @@ static elog_t logger;
 static atomic_bool producer_done;
 static atomic_bool producer_error;
 
+/** @brief Model the one designated ISR producer on a Windows host thread. */
 static DWORD WINAPI produce_faults(LPVOID context)
 {
     (void)context;
@@ -40,6 +47,7 @@ static DWORD WINAPI produce_faults(LPVOID context)
     return 0u;
 }
 
+/** @brief Count validated records after producer and consumer quiesce. */
 static int count_records(void *context, const elog_record_t *record)
 {
     uint32_t *next = (uint32_t *)context;

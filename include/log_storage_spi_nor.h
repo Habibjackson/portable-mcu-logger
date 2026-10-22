@@ -1,3 +1,9 @@
+/** @file
+ * @brief Descriptor-driven SPI NOR backend and bus callback contracts.
+ *
+ * The application must supply geometry and commands from the selected chip
+ * datasheet. Initialization does not probe identity or configure protection.
+ */
 #ifndef ELOG_STORAGE_SPI_NOR_H
 #define ELOG_STORAGE_SPI_NOR_H
 

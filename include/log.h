@@ -1,3 +1,10 @@
+/** @file
+ * @brief Public logger API, caller-owned state, and readback statistics.
+ *
+ * Ordinary calls run in one serialized task. Enqueue copies bytes into RAM;
+ * elog_process() or elog_flush() must finish before a record is durable.
+ * The designated ISR producer has a separate bounded ingress API.
+ */
 #ifndef ELOG_H
 #define ELOG_H
 
@@ -37,6 +44,7 @@ typedef struct {
     uint8_t busy; /**< Active journal state or pending selected record. */
 } elog_status_t;
 
+/** @brief One copied pending record; private to the logger's bounded queues. */
 typedef struct {
     uint64_t timestamp;
     uint32_t event_id;
@@ -46,6 +54,7 @@ typedef struct {
     uint8_t payload[ELOG_MAX_PAYLOAD];
 } elog_entry_t;
 
+/** @brief Queue metadata over caller-owned slots inside elog_t. */
 typedef struct {
     elog_entry_t *slots;
     uint8_t capacity;
@@ -53,6 +62,7 @@ typedef struct {
     uint8_t count;
 } elog_queue_t;
 
+/** @brief Recovered state and usage of one physical erase region. */
 typedef struct {
     uint32_t start;
     uint32_t length;
@@ -63,6 +73,7 @@ typedef struct {
     uint8_t state;
 } elog_page_t;
 
+/** @brief Volatile repeat and duration state for one active fault ID. */
 typedef struct {
     uint32_t id;
     uint32_t repeats;
@@ -71,6 +82,7 @@ typedef struct {
     uint8_t active;
 } elog_fault_state_t;
 
+/** @brief Bounded RAM copy of telemetry around a fault transition. */
 typedef struct {
     uint64_t timestamp;
     uint32_t event_id;

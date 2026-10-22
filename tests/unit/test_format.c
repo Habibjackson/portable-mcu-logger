@@ -1,3 +1,9 @@
+/** @file
+ * @brief Verify version-1 record encoding, CRC, commit, and RAM geometry.
+ *
+ * Corrupt or incomplete record images must fail validation rather than
+ * appearing as durable records.
+ */
 #include "log_format.h"
 #include "log_storage_ram.h"
 
@@ -8,6 +14,7 @@
     fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #x); return 1; \
 } } while (0)
 
+/** @brief Validate serialized record fields, CRC, padding, and commit bytes. */
 static int test_record(void)
 {
     static const uint8_t payload[] = { 0x11u, 0x22u, 0x33u };
@@ -49,6 +56,7 @@ static int test_record(void)
     return 0;
 }
 
+/** @brief Enforce erased-only programming and configured erase boundaries. */
 static int test_ram(void)
 {
     uint8_t bytes[512];

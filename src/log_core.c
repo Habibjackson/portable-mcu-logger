@@ -1,15 +1,26 @@
+/** @file
+ * @brief Queue, fault, and journal state-machine implementation.
+ *
+ * Task calls enqueue bounded RAM entries. elog_process() selects priority,
+ * writes page and record bodies, verifies them, then programs commit units.
+ * Storage failures latch diagnostics; recovery rescans without erasing data.
+ */
 #include "log_internal.h"
 #include "log_codec.h"
 
 #include <limits.h>
 #include <string.h>
 
+/** @brief Read the optional task clock; zero means no clock was configured. */
 static uint64_t now_ms(const elog_t *logger)
 {
     return logger->config.timestamp != NULL ?
         logger->config.timestamp(logger->config.timestamp_context) : 0u;
 }
 
+/** @brief Freeze the recent RAM ring and arm the configured post-fault count.
+ * Repeated fault requests do not replace a snapshot already being drained.
+ */
 static void freeze_recent(elog_t *logger)
 {
     if (logger->pre_frozen != 0u) {
@@ -25,6 +36,7 @@ static void freeze_recent(elog_t *logger)
     }
 }
 
+/** @brief Consume the ISR's atomic request in the serialized task context. */
 static void check_freeze_request(elog_t *logger)
 {
     if (atomic_exchange_explicit(&logger->freeze_request, false,
@@ -33,6 +45,10 @@ static void check_freeze_request(elog_t *logger)
     }
 }
 
+/** @brief Copy eligible telemetry into bounded pre/post-fault RAM snapshots.
+ * Only accepted TELEMETRY entries of at most 24 bytes are eligible. This
+ * snapshot path does not itself commit data to flash.
+ */
 static void remember_telemetry(elog_t *logger, const elog_entry_t *entry)
 {
     if (entry->type != (uint8_t)ELOG_TYPE_TELEMETRY || entry->length > 24u) {
@@ -63,6 +79,9 @@ static void remember_telemetry(elog_t *logger, const elog_entry_t *entry)
     }
 }
 
+/** @brief Reject unsupported policies before any logger state is initialized.
+ * Storage geometry and partition coverage are checked by elog_build_pages().
+ */
 static elog_result_t validate_config(const elog_config_t *config,
                                       const elog_storage_t *storage)
 {
@@ -396,6 +415,10 @@ elog_result_t elog_flush(elog_t *logger, uint32_t max_steps)
     return ELOG_WOULD_BLOCK;
 }
 
+/** @brief Select the next RAM entry in journal priority order.
+ * ISR ingress precedes task critical and event queues. Frozen pre/post-fault
+ * samples precede ordinary routine data. ELOG_EMPTY means no pending work.
+ */
 static elog_result_t take_pending(elog_t *logger)
 {
     check_freeze_request(logger);
@@ -463,6 +486,10 @@ static elog_result_t take_pending(elog_t *logger)
     return ELOG_EMPTY;
 }
 
+/** @brief Build one record image, using compression only when it saves bytes.
+ * force_snapshot disables DELTA when a new page would break its base chain.
+ * The image includes commit bytes, but program_chunk() writes them separately.
+ */
 static elog_result_t encode_pending(elog_t *logger, uint8_t force_snapshot)
 {
     const uint32_t g = logger->storage.ops->program_granularity(
@@ -523,6 +550,10 @@ static elog_result_t encode_pending(elog_t *logger, uint8_t force_snapshot)
         logger->record_image, sizeof logger->record_image, &logger->record_layout);
 }
 
+/** @brief Bind the pending record to an active or newly selected erase page.
+ * If an active page cannot fit it, the first record on the next page is made
+ * self-contained before page creation or rotation begins.
+ */
 static elog_result_t prepare_record(elog_t *logger)
 {
     const uint32_t g = logger->storage.ops->program_granularity(
@@ -571,6 +602,7 @@ static elog_result_t prepare_record(elog_t *logger)
     return ELOG_OK;
 }
 
+/** @brief Latch one failed journal operation for explicit recovery. */
 static elog_result_t storage_failure(elog_t *logger, elog_result_t result)
 {
     logger->last_error = result;
@@ -579,6 +611,10 @@ static elog_result_t storage_failure(elog_t *logger, elog_result_t result)
     return result;
 }
 
+/** @brief Program one backend-sized piece of a body or commit unit.
+ * The process state advances only after the complete requested image part is
+ * programmed. A backend failure leaves the writer in ELOG_PROCESS_FAILED.
+ */
 static elog_result_t program_chunk(elog_t *logger, uint32_t address,
                                     const uint8_t *source, size_t total,
                                     uint8_t next_state)

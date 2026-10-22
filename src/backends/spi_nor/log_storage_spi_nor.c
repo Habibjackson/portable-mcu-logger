@@ -1,7 +1,15 @@
+/** @file
+ * @brief Implement descriptor-driven ordinary 1-1-1 SPI NOR storage.
+ *
+ * Bus callbacks perform chip select and transfers. The adapter bounds
+ * every access, polls status with a finite budget, and verifies program and
+ * erase results. Device identification and protection setup are external.
+ */
 #include "log_storage_spi_nor.h"
 
 #include <string.h>
 
+/** @brief Check a device-relative range against the logger reservation. */
 static int allowed(const elog_spi_nor_t *nor, uint32_t address, size_t length)
 {
     return address >= nor->device.allowed_start &&
@@ -9,6 +17,7 @@ static int allowed(const elog_spi_nor_t *nor, uint32_t address, size_t length)
            length <= nor->device.allowed_end - address;
 }
 
+/** @brief Assert CS and send an opcode/address prefix, releasing CS on error. */
 static elog_result_t start_command(elog_spi_nor_t *nor,
                                     const uint8_t *command, size_t length)
 {
@@ -23,6 +32,7 @@ static elog_result_t start_command(elog_spi_nor_t *nor,
     return result;
 }
 
+/** @brief Release CS while preserving an earlier transfer failure. */
 static elog_result_t finish_command(elog_spi_nor_t *nor,
                                      elog_result_t transfer_result)
 {
@@ -30,6 +40,7 @@ static elog_result_t finish_command(elog_spi_nor_t *nor,
     return transfer_result != ELOG_OK ? transfer_result : deselect;
 }
 
+/** @brief Encode a three- or four-byte big-endian SPI command address. */
 static size_t address_command(const elog_spi_nor_t *nor, uint8_t opcode,
                                uint32_t address, uint8_t command[5])
 {
@@ -53,6 +64,10 @@ static elog_result_t status_byte(elog_spi_nor_t *nor, uint8_t *status)
     return finish_command(nor, result);
 }
 
+/** @brief Poll write-in-progress with both clock and poll-count bounds.
+ * The bus clock may wrap; unsigned subtraction keeps elapsed time valid over
+ * intervals shorter than one full counter cycle.
+ */
 static elog_result_t wait_ready(elog_spi_nor_t *nor, uint32_t timeout_ms)
 {
     const uint32_t start = nor->bus.now_ms(nor->bus.context);
@@ -72,6 +87,7 @@ static elog_result_t wait_ready(elog_spi_nor_t *nor, uint32_t timeout_ms)
     return ELOG_STORAGE_TIMEOUT;
 }
 
+/** @brief Set the write-enable latch and verify it when the chip exposes it. */
 static elog_result_t write_enable(elog_spi_nor_t *nor)
 {
     const uint8_t opcode = nor->device.write_enable_opcode;
@@ -160,6 +176,10 @@ static elog_result_t nor_read(void *context, uint32_t address,
     return finish_command(nor, result);
 }
 
+/** @brief Program erased data in chip-page pieces and verify each piece.
+ * A command never crosses the configured page-program boundary. Readback
+ * failure is reported before the caller may write its separate commit unit.
+ */
 static elog_result_t nor_program(void *context, uint32_t address,
                                  const void *source, size_t length,
                                  uint32_t timeout_ms)
@@ -223,6 +243,10 @@ static elog_result_t nor_program(void *context, uint32_t address,
     return ELOG_OK;
 }
 
+/** @brief Erase one declared region with its descriptor opcode and verify it.
+ * The routine never chooses an erase size or opcode from an address alone;
+ * the validated chip descriptor supplies both.
+ */
 static elog_result_t nor_erase(void *context, uint32_t address,
                                uint32_t length, uint32_t timeout_ms)
 {

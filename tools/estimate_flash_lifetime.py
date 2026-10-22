@@ -8,6 +8,12 @@ import math
 
 def estimate(rate_hz, record_bytes, page_bytes, page_count, cycles,
              derating, duty_cycle, header_bytes):
+    """Estimate idealized circular-partition wear from rate and geometry.
+
+    Return per-day write and erase counts plus derated lifetime. The model
+    assumes uniform rotation and a fixed physical record size; it is not a
+    device endurance or retention guarantee.
+    """
     if not (rate_hz >= 0 and record_bytes > 0 and page_bytes > header_bytes > 0
             and page_count >= 2 and cycles > 0 and 0 < derating <= 1
             and 0 < duty_cycle <= 1):
@@ -47,6 +53,7 @@ def estimate(rate_hz, record_bytes, page_bytes, page_count, cycles,
 
 
 def main():
+    """Parse workload inputs and print the estimate and assumptions as JSON."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rate-hz", type=float, required=True,
                         help="records per second while active")

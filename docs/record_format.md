@@ -5,6 +5,14 @@ structure layout. Addresses in the backend API are byte offsets from the
 device base. A page begins at the backend's erase-region start. The page header
 is always 32 bytes; records follow contiguously. Erased bytes are `0xFF`.
 
+The format does not require continuous logging. The Blue Pill test app now
+queues sensor records only from fault onset through one recovery sample; idle
+sensor checks leave this format and the reserved flash region unchanged.
+An application that keeps earlier readings in RAM and queues them only at a
+fault gets the enqueue time in each record header. The
+[pre-trigger example](../examples/pretrigger_capture/main.c) places the
+original acquisition time in its application payload.
+
 ## Page header
 
 | Offset | Bytes | Value |
@@ -63,8 +71,11 @@ Codec IDs: `0=NONE`, `1=DELTA`, `2=VARINT`, `3=BLOCK` (reserved), and
 32-bit little-endian words. `VARINT` starts with a one-byte word count, then
 ZigZag LEB128 words. `DELTA` starts with the 8-byte base record sequence and a
 one-byte word count, then ZigZag LEB128 signed differences. A decoder must
-find the validated base record before applying a delta. When compression
-expands, the logger stores `NONE` with equal original/stored lengths.
+find the validated base record before applying a delta. When compression does
+not shorten the payload, the logger stores `NONE` with equal original/stored
+lengths.
+The runnable [compression examples](../examples/README.md#compare-built-in-compression-modes)
+show byte-for-byte readback of `NONE`, `VARINT`, `DELTA`, and a custom RLE ID.
 
 Sequence and generation comparison uses modulo 2^64 with a half-range rule:
 distance exactly 2^63 is ambiguous and rejected. Record iteration yields

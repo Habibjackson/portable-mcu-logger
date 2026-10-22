@@ -20,6 +20,7 @@ FIELD_TYPES = {"u8": "B", "u16": "H", "u32": "I", "i32": "i"}
 
 
 def newer(a, b):
+    """Compare wrapping 64-bit sequence numbers; reject a half-range tie."""
     difference = (a - b) & MASK64
     if difference == 1 << 63:
         raise ValueError("ambiguous sequence/generation wrap")
@@ -27,10 +28,16 @@ def newer(a, b):
 
 
 def crc32(data):
+    """Return the format's reflected CRC-32/IEEE as an unsigned 32-bit value."""
     return zlib.crc32(data) & 0xFFFFFFFF
 
 
 def regions_from_args(size, page_size, regions_path):
+    """Build a gap-free erase-region map for the complete raw image.
+
+    A JSON map supports variable erase sizes; otherwise page_size is repeated.
+    Reject partial coverage before any record parsing begins.
+    """
     if regions_path:
         regions = json.loads(Path(regions_path).read_text(encoding="utf-8"))
         result = [(int(x["start"]), int(x["length"])) for x in regions]
@@ -51,6 +58,10 @@ def regions_from_args(size, page_size, regions_path):
 
 
 def read_varint(data, position):
+    """Return one unsigned LEB128 value and the next byte offset.
+
+    Truncated, unterminated, and overflowing values raise ValueError.
+    """
     value = 0
     for index in range(10):
         if position >= len(data):
@@ -66,10 +77,16 @@ def read_varint(data, position):
 
 
 def unzigzag(value):
+    """Reverse the signed-integer ZigZag mapping used by numeric codecs."""
     return (value >> 1) if value & 1 == 0 else -((value >> 1) + 1)
 
 
 def decode_numeric(data, codec, original_length, decoded_by_seq):
+    """Return uncompressed payload bytes for NONE, VARINT, or DELTA.
+
+    DELTA requires its referenced base sequence in decoded_by_seq. Unknown
+    codecs, broken chains, invalid lengths, and trailing bytes raise ValueError.
+    """
     if codec == 0:
         if len(data) != original_length:
             raise ValueError("NONE length mismatch")
@@ -112,6 +129,12 @@ def decode_numeric(data, codec, original_length, decoded_by_seq):
 
 
 def parse_image(image, regions, granularity):
+    """Validate committed pages and records, then decode in sequence order.
+
+    Return (records, warnings). Torn tails and codec failures become warnings;
+    only validated commits are returned as records. The caller may use --strict
+    to make any warning a command-line failure.
+    """
     if granularity < 1 or granularity > 8 or 32 % granularity:
         raise ValueError("program granularity must divide the 32-byte page header")
     records = []
@@ -332,6 +355,7 @@ def render_human(records, warnings, schema):
 
 
 def main():
+    """Parse CLI options and print JSON or a schema-aware human timeline."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("image", type=Path, help="raw device-relative flash dump")
     parser.add_argument("--page-size", type=int, default=2048)

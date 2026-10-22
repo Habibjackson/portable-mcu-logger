@@ -30,9 +30,28 @@ target_link_libraries(elog_reboot_recovery PRIVATE embedded_logger)
 add_executable(elog_isr_safe_state examples/isr_safe_state/main.c)
 target_link_libraries(elog_isr_safe_state PRIVATE embedded_logger)
 
+add_executable(elog_fault_window examples/fault_window/main.c)
+target_link_libraries(elog_fault_window PRIVATE embedded_logger)
+
+add_executable(elog_pretrigger_capture examples/pretrigger_capture/main.c)
+target_link_libraries(elog_pretrigger_capture PRIVATE embedded_logger)
+
+add_executable(elog_rate_limited_telemetry
+    examples/rate_limited_telemetry/main.c)
+target_link_libraries(elog_rate_limited_telemetry PRIVATE embedded_logger)
+
+add_executable(elog_compression_modes examples/compression_modes/main.c)
+target_link_libraries(elog_compression_modes PRIVATE embedded_logger)
+
+add_executable(elog_custom_rle_codec examples/custom_rle_codec/main.c)
+target_link_libraries(elog_custom_rle_codec PRIVATE embedded_logger)
+
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     foreach(example IN ITEMS elog_quickstart elog_reboot_recovery
-                             elog_isr_safe_state)
+                             elog_isr_safe_state elog_fault_window
+                             elog_pretrigger_capture
+                             elog_rate_limited_telemetry
+                             elog_compression_modes elog_custom_rle_codec)
         target_compile_options(${example} PRIVATE -Wall -Wextra -Wconversion
                                -Wsign-conversion -Wpedantic -Werror)
     endforeach()
@@ -47,6 +66,12 @@ if(BUILD_TESTING)
     add_test(NAME example_quickstart COMMAND elog_quickstart)
     add_test(NAME example_reboot_recovery COMMAND elog_reboot_recovery)
     add_test(NAME example_isr_safe_state COMMAND elog_isr_safe_state)
+    add_test(NAME example_fault_window COMMAND elog_fault_window)
+    add_test(NAME example_pretrigger_capture COMMAND elog_pretrigger_capture)
+    add_test(NAME example_rate_limited_telemetry
+             COMMAND elog_rate_limited_telemetry)
+    add_test(NAME example_compression_modes COMMAND elog_compression_modes)
+    add_test(NAME example_custom_rle_codec COMMAND elog_custom_rle_codec)
     add_executable(elog_format_test tests/unit/test_format.c)
     target_link_libraries(elog_format_test PRIVATE embedded_logger)
     add_test(NAME format_and_ram COMMAND elog_format_test)

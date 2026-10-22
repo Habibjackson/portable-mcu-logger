@@ -1,3 +1,9 @@
+/** @file
+ * @brief Fault-injection wrapper over the RAM flash model.
+ *
+ * A selected program or erase can partially modify bytes before returning
+ * an error. The retained image models interrupted writes across a reboot.
+ */
 #ifndef ELOG_STORAGE_SIM_H
 #define ELOG_STORAGE_SIM_H
 

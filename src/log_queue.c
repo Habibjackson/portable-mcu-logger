@@ -1,3 +1,9 @@
+/** @file
+ * @brief Fixed-capacity task-side queues for pending records.
+ *
+ * Critical and event queues reject a new entry when full. The routine
+ * queue replaces its oldest pending entry and reports the replacement.
+ */
 #include "log_internal.h"
 
 #include <string.h>

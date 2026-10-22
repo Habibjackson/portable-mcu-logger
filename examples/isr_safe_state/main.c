@@ -3,7 +3,9 @@
  *
  * This host program calls the ISR-shaped function directly. On a device,
  * replace disable_outputs_now() with immediate application hardware shutdown
- * and call on_fault_isr() from one designated interrupt producer.
+ * and call on_fault_isr() from one designated interrupt producer. The third
+ * capture is rejected by the bounded ingress queue, but the safe-state action
+ * still happened before the logger call. Flash work runs later in task context.
  */
 #include "log.h"
 #include "log_storage_ram.h"
@@ -22,12 +24,22 @@ static elog_storage_t storage;
 static elog_t logger;
 static atomic_bool outputs_disabled;
 
+/** @brief Model an immediate actuator shutdown before fault capture.
+ * @note Replace this atomic flag with real hardware control in an MCU app.
+ *       Logger success must never decide whether shutdown occurs.
+ */
 static void disable_outputs_now(void)
 {
     /* Application hardware shutdown belongs here, before any logger call. */
     atomic_store_explicit(&outputs_disabled, 1, memory_order_relaxed);
 }
 
+/** @brief Capture one fault without doing flash I/O in the ISR path.
+ * @param fault_id Application-defined reason for the fault.
+ * @param timestamp_ms Explicit monotonic time supplied by the caller.
+ * @return ELOG_OK on RAM capture or ELOG_QUEUE_FULL if ingress is saturated.
+ * @warning Use one designated ISR producer; ordinary calls remain task-side.
+ */
 static elog_result_t on_fault_isr(uint32_t fault_id, uint64_t timestamp_ms)
 {
     const uint8_t snapshot[4] = {0xDCu, 0x05u, 0u, 0u}; /* 1500 mA */
@@ -36,6 +48,11 @@ static elog_result_t on_fault_isr(uint32_t fault_id, uint64_t timestamp_ms)
                                   snapshot, sizeof snapshot);
 }
 
+/** @brief Count committed fault records after task-side processing.
+ * @param context Address of the caller's count.
+ * @param record Borrowed validated record from the readback iterator.
+ * @return Zero so iteration continues through every partition.
+ */
 static int count_fault(void *context, const elog_record_t *record)
 {
     size_t *count = (size_t *)context;
@@ -45,6 +62,11 @@ static int count_fault(void *context, const elog_record_t *record)
     return 0;
 }
 
+/** @brief Demonstrate ISR ingress overflow and later durable commits.
+ * @return Zero when two faults commit, one is rejected, and safe state is set;
+ *         nonzero if any queue, storage, or counter check fails.
+ * @note The RAM backend models flash; this does not measure ISR deadlines.
+ */
 int main(void)
 {
     for (uint32_t i = 0u; i < PAGE_COUNT; ++i) {
